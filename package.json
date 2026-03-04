@@ -1,0 +1,26 @@
+{
+  "name": "cache-stampede-stopper",
+  "version": "1.0.0",
+  "description": "This repository is created for my first Flavour Project in semester 6. It refers refers to the technical solution you are building to prevent a system-wide failure known as a Cache Stampede (or the \"Thundering Herd\" problem).",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.3.3",
+    "@types/pg": "^8.18.0",
+    "nodemon": "^3.1.14",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "ioredis": "^5.10.0",
+    "pg": "^8.19.0"
+  }
+}

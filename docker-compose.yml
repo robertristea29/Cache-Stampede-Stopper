@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  # The Fast Cache Layer (Redis)
+  redis:
+    image: redis/redis-stack:latest
+    ports:
+      - "6379:6379"  # Standard Redis port
+      - "8001:8001"  # RedisInsight Dashboard (very helpful!)
+
+  # The Permanent Storage Layer (PostgreSQL)
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: football_db
+    ports:
+      - "5432:5432"
