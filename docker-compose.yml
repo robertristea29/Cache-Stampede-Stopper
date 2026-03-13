@@ -1,5 +1,27 @@
 version: '3.8'
 services:
+  # Prometheus: The Metrics Database
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-remote-write-receiver' # Allows k6 to send data
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+  # Grafana: The Visual Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3001:3000" # Access via localhost:3001
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
   # The Fast Cache Layer (Redis)
   redis:
     image: redis/redis-stack:latest
@@ -10,9 +32,13 @@ services:
   # The Permanent Storage Layer (PostgreSQL)
   postgres:
     image: postgres:latest
+    volumes:
+      - postgres_data:/var/lib/postgresql/data  # This saves your data on your hard drive
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
       POSTGRES_DB: football_db
     ports:
       - "5432:5432"
+volumes:
+  postgres_data:
