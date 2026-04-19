@@ -1,0 +1,67 @@
+
+
+POST Request Timeline:
+
+T=0ms    npm run test:home (sends 1-0)
+         ↓
+T=1ms    API: Updates Redis cache instantly
+         API: LPUSH message to score_updates list
+         Redis list now has: [{"matchId":1, "score_home":1, ...}]
+         
+T=2ms    API: Returns 200 OK to user (user doesn't wait!)
+         
+         [Meanwhile, in background]
+         
+T=50ms   Worker: BRPOP detects message
+         Redis list still has: [{"matchId":1, "score_home":1, ...}]
+         
+T=51ms   Worker: Parses JSON
+         Worker: UPDATE database
+         
+T=52ms   Worker: BRPOP message (removes it)
+         Redis list now: [] (empty)
+
+
+
+
+REDIS LIST EXPLANATION
+
+POST /goal arrives
+        ↓
+Redis Queue (score_updates LIST):
+  ├─ Stores JSON message temporarily
+  ├─ {"matchId":1,"score_home":2,"score_away":0,"timestamp":...}
+  └─ Message sits here until consumed
+        ↓
+Worker BRPOP (polling queue):
+  ├─ Detects message
+  ├─ Extracts data from JSON
+  └─ Removes message from queue
+        ↓
+Database UPDATE:
+  ├─ Execute: UPDATE matches SET score_home=2, score_away=0 WHERE id=1
+  └─ Database now synced with cache
+        ↓
+Redis list becomes empty (message deleted)
+
+
+Redis Data Types in Your System:
+
+┌─────────────────────────────────────────────┐
+│  STRING: match:1                            │
+│  ├─ Created by: GET endpoint (reads DB)     │
+│  │  or POST endpoint (updates score)        │
+│  ├─ Lifetime: 30 seconds (CACHE_TTL)        │
+│  ├─ Auto-deleted: YES                       │
+│  └─ Data: Full match object                 │
+└─────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────┐
+│  LIST: score_updates                        │
+│  ├─ Created by: POST endpoint (queuing)     │
+│  ├─ Elements added by: LPUSH                │
+│  ├─ Elements removed by: BRPOP (worker)     │
+│  ├─ Auto-deleted: NO                        │
+│  ├─ Manual cleanup: When messages consumed  │
+│  └─ Data: JSON messages                     │
+└─────────────────────────────────────────────┘

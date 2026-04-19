@@ -1,5 +1,44 @@
 version: '3.8'
 services:
+  # The Node.js API Server (Write-Behind Producer)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: cache-stampede-app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://user:password@postgres:5432/football_db
+    depends_on:
+      - redis
+      - postgres
+    volumes:
+      - ./.env:/app/.env
+    networks:
+      - cache-stampede-network
+
+  # The Background Worker (Write-Behind Consumer)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: cache-stampede-worker
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://user:password@postgres:5432/football_db
+    depends_on:
+      - redis
+      - postgres
+    volumes:
+      - ./.env:/app/.env
+    networks:
+      - cache-stampede-network
+
   # Prometheus: The Metrics Database
   prometheus:
     image: prom/prometheus:latest
@@ -11,6 +50,8 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - cache-stampede-network
 
   # Grafana: The Visual Dashboard
   grafana:
@@ -22,16 +63,23 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     depends_on:
       - prometheus
+    networks:
+      - cache-stampede-network
+
   # The Fast Cache Layer (Redis)
   redis:
     image: redis/redis-stack:latest
+    container_name: cache-stampede-redis
     ports:
       - "6379:6379"  # Standard Redis port
       - "8001:8001"  # RedisInsight Dashboard (very helpful!)
+    networks:
+      - cache-stampede-network
 
   # The Permanent Storage Layer (PostgreSQL)
   postgres:
     image: postgres:latest
+    container_name: cache-stampede-postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data  # This saves your data on your hard drive
     environment:
@@ -40,5 +88,12 @@ services:
       POSTGRES_DB: football_db
     ports:
       - "5432:5432"
+    networks:
+      - cache-stampede-network
+
+networks:
+  cache-stampede-network:
+    driver: bridge
+
 volumes:
   postgres_data:

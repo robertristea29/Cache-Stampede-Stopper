@@ -1,0 +1,45 @@
+# Production-Ready Dockerfile for Worker
+# Multi-stage build: Build stage + Runtime stage
+# Worker runs continuously consuming messages from Redis queue
+
+# Stage 1: Build stage
+FROM node:18-alpine as builder
+WORKDIR /app
+
+# Copy dependency files
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Install ALL dependencies (including dev dependencies for building)
+RUN npm ci
+
+# Copy source code
+COPY src ./src
+
+# Build TypeScript to JavaScript
+RUN npm run build
+
+# Stage 2: Runtime stage
+FROM node:18-alpine
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install ONLY production dependencies (smaller image)
+RUN npm ci --only=production
+
+# Copy compiled code from builder stage
+COPY --from=builder /app/dist ./dist
+
+# Copy environment file
+COPY .env .
+
+# Worker runs in the background, no port exposure needed
+# (Worker connects to Redis and PostgreSQL internally)
+
+# No health check for worker (it runs continuously)
+# But we could add one: check if Redis connection is alive
+
+# Start the worker
+CMD ["node", "dist/worker.js"]

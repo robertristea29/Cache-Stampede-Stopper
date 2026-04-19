@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { sleep, check } from 'k6';
 
 export const options = {
-  vus: 500,    // Lowering to 200 VUs ensures your OS can handle the sockets
+  vus: 200,    // Lowering to 200 VUs ensures your OS can handle the sockets
   duration: '30s',
 };
 

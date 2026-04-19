@@ -1,0 +1,217 @@
+WRITE-THROUGH IMPLEMENTATION ROADMAP
+
+PHASE 1: Create Write-Through POST Endpoint
+File: index.ts
+
+Task: Add a NEW POST endpoint (keep Write-Behind endpoint separate for comparison)
+
+// NEW endpoint for Write-Through comparison
+POST /matches/:id/goal/write-through
+  1. Validate input (matchId, score_home, score_away)
+  2. Update PostgreSQL database FIRST (synchronous)
+     - Execute: UPDATE matches SET score_home=?, score_away=?, last_updated=NOW() WHERE id=?
+     - If error → Return 500 immediately
+  3. Only after DB success → Update Redis cache
+     - Set cache with CACHE_TTL (30s)
+  4. Return 200 OK with full match data
+
+Key Difference from Write-Behind:
+  ✅ Write-Behind:    Cache → Queue → Return | Worker updates DB later
+  ✅ Write-Through:   DB → Cache → Return (user waits for DB)
+
+Endpoint Response Time Comparison:
+  Write-Behind:    ~5-10ms (cache + queue)
+  Write-Through:  ~50-150ms (database operation)
+
+  Implementation Checklist:
+
+ Create /matches/:id/goal/write-through POST endpoint
+ Fetch full match object first (from cache or DB)
+ Execute database UPDATE synchronously
+ On success, update Redis cache
+ Return full match object
+ Error handling if database fails
+ Console logging for debugging
+
+
+
+
+PHASE 2: Create Test Scenarios for Write-Through
+File: src/test-scenarios-write-through.ts (NEW FILE)
+
+Tasks:
+
+ Create separate test file for Write-Through scenarios
+ Scenarios should be identical to Write-Behind (same test sequence)
+ Each scenario calls /matches/:id/goal/write-through instead
+
+ Test Scenarios:
+ Scenario 1: Single goal (Home team scores)
+Scenario 2: Single goal (Away team scores)
+Scenario 3: Reset match to 0-0
+Scenario 4: Rapid fire goals (5 goals quick succession)
+Scenario 5: Back and forth (teams alternating)
+
+npm Scripts to Add:
+
+"test:write-through": "ts-node src/test-scenarios-write-through.ts",
+"test:wt:home": "ts-node src/test-scenarios-write-through.ts 1",
+"test:wt:away": "ts-node src/test-scenarios-write-through.ts 2",
+"test:wt:reset": "ts-node src/test-scenarios-write-through.ts 3",
+"test:wt:rapid": "ts-node src/test-scenarios-write-through.ts 4",
+"test:wt:backforth": "ts-node src/test-scenarios-write-through.ts 5"
+
+
+
+
+PHASE 3: Manual Testing Write-Through
+Testing Procedure:
+
+# Terminal 1: Start API
+npm run dev
+
+# Terminal 2: Test Write-Through endpoint
+npm run test:wt:home
+npm run test:wt:away
+npm run test:wt:rapid-fire
+
+# Observe:
+├─ Terminal 1 should show slower response times
+├─ Database updates BEFORE cache
+├─ No Redis queue messages (synchronous!)
+└─ User waits for database operation
+
+What to Verify:
+
+ Endpoint responds (after database completes)
+ Response time is ~50-150ms (slower than Write-Behind)
+ Redis cache is updated correctly
+ Database is updated immediately (not queued)
+ No messages in Redis score_updates queue
+ Browser shows latest score
+
+
+
+ PHASE 4: Create Comparison Test Suite
+
+ New File: src/test-comparison.ts
+
+Purpose: Run both strategies back-to-back and measure differences
+
+// Pseudo-code
+async function compareStrategies() {
+  console.log("WRITE-THROUGH vs WRITE-BEHIND COMPARISON\n");
+  
+  // Reset to 0-0
+  await sendGoal("/matches/1/goal/write-through", {score_home: 0, score_away: 0});
+  
+  // Test Write-Through
+  console.time("Write-Through Response");
+  await sendGoal("/matches/1/goal/write-through", {score_home: 1, score_away: 0});
+  console.timeEnd("Write-Through Response");
+  // Expected: ~50-150ms
+  
+  // Reset to 0-0
+  await sendGoal("/matches/1/goal/write-through", {score_home: 0, score_away: 0});
+  
+  // Test Write-Behind
+  console.time("Write-Behind Response");
+  await sendGoal("/matches/1/goal", {score_home: 1, score_away: 0});
+  console.timeEnd("Write-Behind Response");
+  // Expected: ~5-10ms
+  
+  // Show difference
+  console.log("\nRESULTS:");
+  console.log("Write-Behind is ~10-15x FASTER!");
+}
+
+npm Script: "test:compare": "ts-node src/test-comparison.ts"
+
+
+
+
+
+PHASE 5: Update Docker for Both Strategies
+Files to Update:
+
+docker-compose.yml - Add write-through-app service (optional, for comparison)
+Dockerfile.app - Already supports both endpoints
+Optional Enhancement:
+
+# docker-compose.yml - Could add second app instance
+write-through-app:
+  build: Dockerfile.app
+  ports:
+    - "3001:3000"  # Different port
+  command: npm run dev
+
+
+
+  PHASE 6: K6 Load Testing for Comparison
+Update existing: load-test.js
+
+Tasks:
+
+ Create two test scenarios in k6:
+Scenario A: 500 VUs hitting /matches/1/goal (Write-Behind)
+Scenario B: 500 VUs hitting /matches/1/goal/write-through (Write-Through)
+ Measure metrics for each:
+Average response time
+P95 latency
+P99 latency
+Throughput (requests/second)
+Error rate
+ Compare results in Grafana
+Expected Results:
+Write-Behind:
+  ├─ Avg Response: ~8ms
+  ├─ P99: ~20ms
+  ├─ Throughput: 1000+ req/s
+  └─ Errors: 0%
+
+Write-Through:
+  ├─ Avg Response: ~80ms
+  ├─ P99: ~150ms
+  ├─ Throughput: 100-200 req/s
+  └─ Errors: 0%
+
+Conclusion: Write-Behind is 10-15x faster for read-heavy scenarios
+
+
+PHASE 7: Documentation & Comparison Report
+Create: Explanation/COMPARISON_REPORT.md
+
+Contents: 
+# Write-Through vs Write-Behind: Complete Comparison
+
+## 1. Architecture Diagram
+- Write-Through flow
+- Write-Behind flow
+- Side-by-side comparison
+
+## 2. Implementation Details
+- Write-Through code walkthrough
+- Write-Behind code walkthrough
+- Key differences highlighted
+
+## 3. Performance Metrics
+- Response time comparison
+- Throughput comparison
+- Latency percentiles (P50, P95, P99)
+- Resource utilization
+
+## 4. Trade-offs Analysis
+- Data Consistency
+- System Throughput
+- User Experience
+- When to use each strategy
+
+## 5. Load Test Results
+- Grafana screenshots
+- k6 test output
+- Analysis and conclusions
+
+## 6. Recommendation
+- Which strategy is better for football scores?
+- Why?
+- When would you use the other one?

@@ -4,10 +4,18 @@
   "description": "This repository is created for my first Flavour Project in semester 6. It refers refers to the technical solution you are building to prevent a system-wide failure known as a Cache Stampede (or the \"Thundering Herd\" problem).",
   "main": "index.js",
   "scripts": {
-  "start": "node dist/index.js",
-  "dev": "nodemon --exec ts-node src/index.ts",
-  "build": "tsc"
-},
+    "start": "node dist/index.js",
+    "dev": "nodemon --exec ts-node src/index.ts",
+    "worker": "ts-node src/worker.ts",
+    "worker:dev": "nodemon --exec ts-node src/worker.ts",
+    "build": "tsc",
+    "test:scenario": "ts-node src/test-scenarios.ts",
+    "test:home": "ts-node src/test-scenarios.ts 1",
+    "test:away": "ts-node src/test-scenarios.ts 2",
+    "test:reset": "ts-node src/test-scenarios.ts 3",
+    "test:rapid-fire": "ts-node src/test-scenarios.ts 4",
+    "test:backforth": "ts-node src/test-scenarios.ts 5"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

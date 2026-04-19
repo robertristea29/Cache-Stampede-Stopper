@@ -1,0 +1,25 @@
+Timeline of Mutex Lock in Action:
+
+T=0ms    1000 users hit GET /matches/1 simultaneously
+         (Cache is cold/expired)
+         
+T=1ms    User #1: SET lock:match:1 'locked' NX
+         ✅ Returns 'OK' - Lock acquired!
+         
+         Users #2-1000: SET lock:match:1 'locked' NX
+         ❌ Returns null - Lock already exists
+         → They wait 50ms and retry
+         
+T=2ms    User #1: Queries database (SELECT * FROM matches WHERE id=1)
+         (Database processes the ONE query)
+         
+T=50ms   User #1: Gets result from DB
+         User #1: Updates cache (SETs match:1 in Redis)
+         User #1: Deletes lock (DELs lock:match:1)
+         ✅ Lock released!
+         
+         Users #2-1000: Retry their SET lock (50ms passed)
+         ❌ Lock is gone but cache now exists!
+         → CACHE HIT! Return immediately
+         
+Result: Database got hit ONCE instead of 1000 times! 🎯

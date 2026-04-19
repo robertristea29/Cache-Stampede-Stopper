@@ -1,0 +1,33 @@
+┌──────────────────────────────────────────────────────┐
+│  You run: docker-compose up --build                 │
+└──────────────────────────────────────────────────────┘
+                        ↓
+┌──────────────────────────────────────────────────────┐
+│  docker-compose reads docker-compose.yml            │
+│  Sees: "worker service uses Dockerfile"             │
+└──────────────────────────────────────────────────────┘
+                        ↓
+┌──────────────────────────────────────────────────────┐
+│  Docker reads Dockerfile                            │
+│  Builds image: Installs deps, copies code           │
+│  Creates: cache-stampede-stopper:latest image       │
+└──────────────────────────────────────────────────────┘
+                        ↓
+┌──────────────────────────────────────────────────────┐
+│  docker-compose starts services in order:           │
+│  1. Redis (port 6379)                              │
+│  2. PostgreSQL (port 5432)                         │
+│  3. App container (port 3000, npm run dev)         │
+│  4. Worker container (npm run worker)              │
+│                                                    │
+│  All connected via internal network!               │
+└──────────────────────────────────────────────────────┘
+                        ↓
+┌──────────────────────────────────────────────────────┐
+│  Result: 4 containers running together:             │
+│  ✅ Redis ready                                     │
+│  ✅ PostgreSQL ready                               │
+│  ✅ API running on :3000                          │
+│  ✅ Worker running in background                  │
+│  ✅ All talking to each other                     │
+└──────────────────────────────────────────────────────┘

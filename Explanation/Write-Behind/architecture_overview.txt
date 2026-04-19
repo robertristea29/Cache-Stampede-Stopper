@@ -1,0 +1,79 @@
+┌─────────────────────────────────────────────────────────────────┐
+│                    WRITE-BEHIND STRATEGY                        │
+└─────────────────────────────────────────────────────────────────┘
+
+User sends: npm run test:home (Goal: Ajax 1-0 PSV)
+                    ↓
+        ┌───────────────────────────┐
+        │   API (index.ts)          │
+        │  [Producer]               │
+        └───────────────────────────┘
+                    ↓
+        Step 1: Update Redis Cache (INSTANT ~5ms)
+        ├─ Fetch full match object from Redis
+        ├─ Update score fields
+        └─ Cache expires in 30 seconds
+                    ↓
+        Step 2: Queue Message (INSTANT ~2ms)
+        └─ LPUSH to Redis list: score_updates
+           Message: {"matchId":1,"score_home":1,"score_away":0,"timestamp":...}
+                    ↓
+        Step 3: Return to User (INSTANT)
+        └─ Response: 200 OK + full match object
+        
+                    ↓
+        ┌────────────────────────────────┐
+        │   WORKER (worker.ts)           │  ← RUNS IN BACKGROUND
+        │  [Consumer]                    │     SEPARATE PROCESS
+        └────────────────────────────────┘
+                    ↓
+        Step 4: Poll Redis Queue (CONTINUOUS)
+        └─ BRPOP score_updates 5  (blocks, waits for messages)
+           If message arrives: process immediately
+           If timeout (5s): loop again
+                    ↓
+        Step 5: Update Database (ASYNC 50-200ms)
+        ├─ Parse JSON message
+        ├─ Execute: UPDATE matches SET score_home=1, score_away=0 WHERE id=1
+        └─ Log success: "✅ Match 1 updated in database"
+                    ↓
+        Step 6: Loop Continues
+        └─ BRPOP waits for next message...
+
+       WORKER PROCESS
+       Current State (Before Worker):
+         score_updates LIST: [9+ messages accumulated]
+
+         Then you run:
+         npm run worker
+
+         Worker does:
+         while (true) {
+         message = BRPOP('score_updates', 5)  ← Pops from RIGHT
+         if (message) {
+            UPDATE database
+            Message disappears from queue ✅
+         }
+         } 
+
+
+
+
+
+         LPUSH: Adds to the LEFT
+         BRPOP: Removes from the RIGHT
+
+         score_updates:
+         ┌───────────────────────────────┐
+         │  LEFT (LPUSH adds here)       │
+         │  ↓                            │
+         │  [newest message]             │
+         │  [message]                    │
+         │  [message]                    │
+         │  [oldest message]             │
+         │  ↑                            │
+         │  RIGHT (BRPOP removes here)   │
+         └───────────────────────────────┘
+
+         Each LPUSH adds new message to LEFT
+         Each BRPOP pops from RIGHT (FIFO queue)

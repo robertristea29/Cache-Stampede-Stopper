@@ -2,10 +2,22 @@ import express, { Request, Response } from 'express';
 import { query } from './db';
 import redis from './redis';
 import dotenv from 'dotenv';
+import { ScoreUpdateMessage, serializeMessage } from './types/messages';
 
 dotenv.config();
 
 const app = express();
+
+// Debug middleware to log raw body
+app.use((req, res, next) => {
+  if (req.method === 'POST') {
+    console.log('Raw headers:', req.headers);
+  }
+  next();
+});
+
+app.use(express.json());
+
 const port = process.env.PORT || 3000;
 
 console.log('Server is starting... 🚀');
@@ -48,6 +60,7 @@ app.get('/matches/:id', async (req: Request, res: Response) => {
         }
 
         const match = result.rows[0];
+        //Cache is update by the user in this line
         await redis.set(cacheKey, JSON.stringify(match), 'EX', CACHE_TTL);
         await redis.del(lockKey); // Release lock [cite: 157]
         
@@ -70,6 +83,72 @@ app.get('/matches/:id', async (req: Request, res: Response) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.post('/matches/:id/goal', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { score_home, score_away } = req.body;
+
+  if (!id || Array.isArray(id)) {
+    return res.status(400).json({ error: 'Match ID is required' });
+  }
+
+  if (typeof score_home !== 'number' || typeof score_away !== 'number') {
+    return res.status(400).json({ error: 'score_home and score_away must be numbers' });
+  }
+
+  const matchId = parseInt(id, 10);
+  if (isNaN(matchId) || matchId <= 0) {
+    return res.status(400).json({ error: 'Invalid match ID' });
+  }
+
+  const cacheKey = `match:${matchId}`;
+
+  try {
+    // Fetch the FULL match object (from cache or DB)
+    let fullMatch: any = null;
+    
+    const cachedMatch = await redis.get(cacheKey);
+    if (cachedMatch) {
+      fullMatch = JSON.parse(cachedMatch);
+    } else {
+      // If not in cache, fetch from database
+      const result = await query('SELECT * FROM matches WHERE id = $1', [matchId]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Match not found' });
+      }
+      fullMatch = result.rows[0];
+    }
+
+    // Update only the score fields
+    fullMatch.score_home = score_home;
+    fullMatch.score_away = score_away;
+    fullMatch.last_updated = new Date().toISOString();
+
+    // Cache the FULL updated match object
+    await redis.set(cacheKey, JSON.stringify(fullMatch), 'EX', CACHE_TTL);
+
+    // Queue message for async database update
+    const message: ScoreUpdateMessage = {
+      matchId,
+      score_home,
+      score_away,
+      timestamp: Date.now(),
+    };
+
+    await redis.lpush('score_updates', serializeMessage(message));
+
+    console.log(`Goal recorded! Match ${matchId}: ${score_home}-${score_away}. Message queued for async processing.`);
+
+    res.json({
+      success: true,
+      message: 'Goal recorded and queued for database update',
+      data: fullMatch,
+    });
+  } catch (err) {
+    console.error('Error recording goal:', err);
+    res.status(500).json({ error: 'Failed to record goal' });
   }
 });
 

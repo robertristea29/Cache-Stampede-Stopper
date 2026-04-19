@@ -1,0 +1,177 @@
+┌─────────────────────┬─────────────────────┬─────────────────────┐
+│  Terminal 1         │  Terminal 2         │  Terminal 3         │
+│  API Server         │  Worker Process     │  Test Commands      │
+├─────────────────────┼─────────────────────┼─────────────────────┤
+│ npm run dev         │ npm run worker      │ npm run test:home   │
+│ (Receives goals)    │ (Processes queue)   │ (Sends goals)       │
+└─────────────────────┴─────────────────────┴─────────────────────┘
+STEP 1: Terminal 1 - Start the API
+# Terminal 1
+npm run dev
+
+# Wait for output:
+# Server running at http://localhost:3000
+# Redis Layer: Connected ✅
+
+STEP 2: Terminal 2 - Start the Worker
+# Terminal 2
+npm run worker
+
+# Wait for output:
+# 🚀 Worker starting...
+# ✅ Redis connected
+# ✅ Database connected
+# 📊 Waiting for messages on queue: "score_updates"
+# ⏱️  BRPOP timeout: 5 seconds
+
+STEP 3: Terminal 3 - Send Test Goals
+# Terminal 3 - Reset first
+npm run test:reset
+
+# Watch:
+# Terminal 1 (API): "Goal recorded! Match 1: 0-0..."
+# Terminal 2 (Worker): "Message received... Database Updated: Match 1 → 0-0"
+# Redis: score_updates queue becomes empty
+
+Then send goals:
+# Terminal 3 - Home team scores
+npm run test:home
+
+# Terminal 3 - Away team scores
+npm run test:away
+
+# Terminal 3 - Back and forth match
+npm run test:backforth
+
+
+
+EXPECTED OUTPUT ACROSS TERMINALS:
+# Terminal 1 (API):
+Server running at http://localhost:3000
+Redis Layer: Connected ✅
+
+Goal recorded! Match 1: 0-0. Message queued for async processing.
+Goal recorded! Match 1: 1-0. Message queued for async processing.
+Goal recorded! Match 1: 1-1. Message queued for async processing.
+Goal recorded! Match 1: 2-1. Message queued for async processing.
+Goal recorded! Match 1: 2-2. Message queued for async processing.
+
+# Terminal 2 (Worker):
+🚀 Worker starting...
+✅ Redis connected
+✅ Database connected
+📊 Waiting for messages on queue: "score_updates"
+⏱️  BRPOP timeout: 5 seconds
+────────────────────────────────────────────────────
+
+📨 Message received from queue:
+   Data: {"matchId":1,"score_home":0,"score_away":0,"timestamp":...}
+
+✅ Database Updated: Match 1 → 0-0
+✅ Message processed successfully
+
+⏳ Waiting for messages... (timeout check at 1:45:30 PM)
+
+📨 Message received from queue:
+   Data: {"matchId":1,"score_home":1,"score_away":0,"timestamp":...}
+
+✅ Database Updated: Match 1 → 1-0
+✅ Message processed successfully
+
+
+
+Terminal 3 (Test Commands):
+🎯 SCENARIO 3: Reset Match (0-0 + Clear History)
+
+✅ Goal sent - Match 1: 0-0 at 1:45:25 PM
+🔄 Score reset to 0-0
+
+Match reset complete. Message queue preserved for database sync.
+
+
+Verification: Check Redis & Browser
+After running tests, verify in Redis Browser:
+
+Search for score_updates → Should be empty (worker consumed all messages)
+Search for match:1 → Should show latest score
+Browser: http://localhost:3000/matches/1 → Should show updated score
+
+WHAT HAPPENS BEHIND THE SCENES:
+Timeline:
+─────────────────────────────────────────────────
+
+T=0s    User: npm run test:home
+        API receives goal request
+
+T=0.01s API: Updates Redis cache (instant)
+        API: Queues message: {matchId:1, score_home:1, score_away:0}
+        API: Returns 200 OK to user
+        
+        ← USER GOT RESPONSE (they're happy!)
+
+T=0.05s Worker: BRPOP waiting on redis
+        Redis: "Message arrived!"
+        Worker: Wakes up, gets message
+
+T=0.1s  Worker: Parses JSON
+        Worker: Executes UPDATE on PostgreSQL
+        
+        ← DATABASE UPDATED (in background)
+
+T=0.15s Worker: Loops, BRPOP waits again
+        Queue now empty
+
+TEST SCENARIOS
+# 1. Reset first
+npm run test:reset
+
+# 2. Send single goals
+npm run test:home
+npm run test:away
+
+# 3. Watch worker process them
+# (Look at Terminal 2)
+
+# 4. Send rapid goals
+npm run test:rapid-fire
+
+# 5. Send alternating goals
+npm run test:backforth
+
+# 6. Check browser after each
+# http://localhost:3000/matches/1
+
+
+
+Shutdown Procedure
+Terminal 1 (API Server - npm run dev)
+🛑 Graceful Shutdown:
+   Press: Ctrl+C
+   
+   You'll see:
+   ✅ Server stopped
+   ✅ Nodemon cleaned up
+   
+   Then: Close with X (or leave open)
+
+
+Terminal 2 (Worker - npm run worker)
+🛑 Graceful Shutdown:
+   Press: Ctrl+C
+   
+   You'll see:
+   ✅ Worker shutting down gracefully...
+   ✅ Redis connection closed
+   
+   (The worker.ts has a signal handler that does this cleanly)
+   
+   Then: Close with X (or leave open)
+
+
+Terminal 3 (PowerShell - Test Commands)
+🛑 No shutdown needed:
+   This terminal just ran commands
+   It's idle and safe to use again
+   
+   Option 1: Just leave it open for next commands
+   Option 2: Close with X
