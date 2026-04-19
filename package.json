@@ -14,7 +14,14 @@
     "test:away": "ts-node src/test-scenarios.ts 2",
     "test:reset": "ts-node src/test-scenarios.ts 3",
     "test:rapid-fire": "ts-node src/test-scenarios.ts 4",
-    "test:backforth": "ts-node src/test-scenarios.ts 5"
+    "test:backforth": "ts-node src/test-scenarios.ts 5",
+    "test:wt-home": "ts-node src/test-scenarios-write-through.ts 1",
+    "test:wt-away": "ts-node src/test-scenarios-write-through.ts 2",
+    "test:wt-reset": "ts-node src/test-scenarios-write-through.ts 3",
+    "test:wt-rapid-fire": "ts-node src/test-scenarios-write-through.ts 4",
+    "test:wt-backforth": "ts-node src/test-scenarios-write-through.ts 5",
+    "test:comparison": "ts-node src/comparison-test.ts",
+    "load-test": "k6 run --out prometheus=http://prometheus:9090/api/v1/write load-test-comparison.js"
   },
   "keywords": [],
   "author": "",
